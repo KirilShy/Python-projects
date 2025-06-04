@@ -1,0 +1,8 @@
+# Ignore the key file and passwords file
+key.key
+passwords.txt
+
+# Python specific ignores
+__pycache__/
+*.py[cod]
+*$py.class 

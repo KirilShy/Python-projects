@@ -1,51 +1,90 @@
 from cryptography.fernet import Fernet
+import os
+import base64
+import hashlib
 
-'''
+# Get the directory where the script is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+KEY_FILE = os.path.join(SCRIPT_DIR, "key.key")
+PASSWORDS_FILE = os.path.join(SCRIPT_DIR, "passwords.txt")
+
 def write_key():
-    key = Fernet.generate_key()
-    with open("key.key", "wb") as key_file:
-        key_file.write(key)
-'''
-
+    """
+    Generates a key and saves it into a file if it doesn't exist.
+    """
+    if not os.path.exists(KEY_FILE):
+        key = Fernet.generate_key()
+        with open(KEY_FILE, "wb") as key_file:
+            key_file.write(key)
 
 def load_key():
-    file = open("key.key", "rb")
-    key = file.read()
-    file.close()
+    """
+    Loads the key from the current directory named `key.key`.
+    """
+    with open(KEY_FILE, "rb") as key_file:
+        key = key_file.read()
     return key
 
+def get_fernet(master_pwd):
+    """
+    Derives a Fernet key from the loaded key and the master password.
+    """
+    key = load_key()
+    # Derive a 32-byte key using SHA256 from the key + master password
+    derived = hashlib.sha256(key + master_pwd.encode()).digest()
+    fernet_key = base64.urlsafe_b64encode(derived)
+    return Fernet(fernet_key)
 
-master_pwd = input("What is the master password? ")
-key = load_key() + master_pwd.encode()
-fer = Fernet(key)
-
-
-def view():
-    with open('passwords.txt', 'r') as f:
-        for line in f.readlines():
+def view(fer):
+    """
+    Decrypts and displays all stored passwords.
+    """
+    if not os.path.exists(PASSWORDS_FILE):
+        print("No passwords stored yet.")
+        return
+        
+    with open(PASSWORDS_FILE, 'r') as f:
+        lines = f.readlines()
+        if not lines:
+            print("No passwords stored yet.")
+            return
+            
+        for line in lines:
             data = line.rstrip()
-            user, passwd = data.split("|")
-            print(f"User: {user} | Password: {str(fer.encrypt(passwd.encode()).decode())}")
+            if "|" not in data:
+                continue
+            user, enc_passwd = data.split("|", 1)
+            try:
+                decrypted = fer.decrypt(enc_passwd.encode()).decode()
+                print(f"User: {user.strip()} | Password: {decrypted}")
+            except Exception:
+                print(f"User: {user.strip()} | Password: [Decryption failed]")
 
+def add(fer):
+    """
+    Adds a new account and encrypted password to the file.
+    """
+    name = input('Account Name: ').strip()
+    pwd = input("Password: ").strip()
+    encrypted_pwd = fer.encrypt(pwd.encode()).decode()
+    with open(PASSWORDS_FILE, 'a') as f:
+        f.write(f"{name} | {encrypted_pwd}\n")
 
-def add():
+def main():
+    write_key()
+    master_pwd = input("What is the master password? ")
+    fer = get_fernet(master_pwd)
 
-    name = input('Account Name: ')
-    pwd = input("Password: ")
+    while True:
+        mode = input("Would you like to add a new password or view existing ones (view, add), press q to quit? ").strip().lower()
+        if mode == 'q':
+            break
+        elif mode == "view":
+            view(fer)
+        elif mode == "add":
+            add(fer)
+        else:
+            print("Invalid mode.")
 
-    with open('passwords.txt', 'a') as f:
-        f.write(name + " | " + str(fer.encrypt(pwd.encode())) + '\n')
-
-
-while True:
-    mode = input("Would you like to add a new password or view existing ones (view, add), press q to quit? ")
-    if mode == 'q':
-        break
-
-    if mode == "view":
-        view()
-    elif mode == "add":
-        add()
-    else:
-        print("Invalid mode.")
-        continue
+if __name__ == "__main__":
+    main()
